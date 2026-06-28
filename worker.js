@@ -355,10 +355,10 @@ export default {
     if (url.pathname === '/status') {
       const now = new Date();
       const savedData = await getLastSavedScores();
-      const active = getActiveMatches(now, savedData);
+      const liveMatches = savedData.filter(m => m.status === 'LIVE' || m.status === 'HT');
       return new Response(JSON.stringify({
-        active: active.length > 0,
-        activeMatches: active.map(m => `${m.t1} vs ${m.t2}`),
+        active: liveMatches.length > 0,
+        activeMatches: liveMatches.map(m => `${m.t1} ${m.s1}-${m.s2} ${m.t2} (${m.status}${m.minute ? ' ' + m.minute + "'" : ''})`),
         now: now.toISOString(),
       }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
     }
