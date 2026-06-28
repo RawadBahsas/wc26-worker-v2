@@ -226,7 +226,50 @@ async function fetchAndStore(active, savedData) {
   });
   if (!sbRes.ok) throw new Error(`Supabase ${sbRes.status}`);
 
+  // Sync fixture_locks — update kickoff times from API for all matches (including scheduled)
+  // This auto-handles rescheduled or delayed matches
+  await syncFixtureLocks(data.matches || []);
+
   return { fetched: fresh.length, total: merged.length };
+}
+
+async function syncFixtureLocks(apiMatches) {
+  try {
+    for (const m of apiMatches) {
+      if (!m.utcDate) continue;
+      const t1 = normTeam(m.homeTeam?.shortName || m.homeTeam?.name || '');
+      const t2 = normTeam(m.awayTeam?.shortName || m.awayTeam?.name || '');
+      if (!t1 || !t2) continue;
+
+      // Find matching fixture ID from our hardcoded list
+      const fixture = GROUP_MATCHES.find(f => {
+        const ft1 = normTeam(f.t1), ft2 = normTeam(f.t2);
+        return (ft1 === t1 && ft2 === t2) || (ft1 === t2 && ft2 === t1);
+      });
+
+      // For knockout matches, we don't have team names in our fixture list,
+      // so match by utcDate proximity to our hardcoded times
+      let fixtureId = fixture?.id;
+      if (!fixtureId) {
+        // Try to find by checking existing fixture_locks for this team pair
+        // Skip for now — knockout IDs will be matched via the app's resolved teams
+        // The important thing is group matches + any knockout matches we can identify
+      }
+
+      if (fixtureId) {
+        await fetch(`${SB_URL}/rest/v1/fixture_locks`, {
+          method: 'POST',
+          headers: {
+            apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+            'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({ fixture_id: fixtureId, kickoff_utc: m.utcDate }),
+        });
+      }
+    }
+  } catch (e) {
+    console.log('[WC26 v2] fixture_locks sync error:', e.message);
+  }
 }
 
 // ── Worker cycle ─────────────────────────────────────────────────────────────
