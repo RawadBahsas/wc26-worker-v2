@@ -235,37 +235,37 @@ async function fetchAndStore(active, savedData) {
 
 async function syncFixtureLocks(apiMatches) {
   try {
+    const now = Date.now();
+    const tomorrow = now + 48 * 60 * 60 * 1000;
+    const toSync = [];
+
     for (const m of apiMatches) {
       if (!m.utcDate) continue;
+      const kickoff = new Date(m.utcDate).getTime();
+      // Only sync matches within next 48h — past matches don't change
+      if (kickoff < now || kickoff > tomorrow) continue;
+
       const t1 = normTeam(m.homeTeam?.shortName || m.homeTeam?.name || '');
       const t2 = normTeam(m.awayTeam?.shortName || m.awayTeam?.name || '');
       if (!t1 || !t2) continue;
 
-      // Find matching fixture ID from our hardcoded list
       const fixture = GROUP_MATCHES.find(f => {
         const ft1 = normTeam(f.t1), ft2 = normTeam(f.t2);
         return (ft1 === t1 && ft2 === t2) || (ft1 === t2 && ft2 === t1);
       });
+      if (fixture) toSync.push({ fixture_id: fixture.id, kickoff_utc: m.utcDate });
+    }
 
-      // For knockout matches, we don't have team names in our fixture list,
-      // so match by utcDate proximity to our hardcoded times
-      let fixtureId = fixture?.id;
-      if (!fixtureId) {
-        // Try to find by checking existing fixture_locks for this team pair
-        // Skip for now — knockout IDs will be matched via the app's resolved teams
-        // The important thing is group matches + any knockout matches we can identify
-      }
-
-      if (fixtureId) {
-        await fetch(`${SB_URL}/rest/v1/fixture_locks`, {
-          method: 'POST',
-          headers: {
-            apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
-            'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
-          },
-          body: JSON.stringify({ fixture_id: fixtureId, kickoff_utc: m.utcDate }),
-        });
-      }
+    // Batch upsert instead of individual writes
+    if (toSync.length > 0) {
+      await fetch(`${SB_URL}/rest/v1/fixture_locks`, {
+        method: 'POST',
+        headers: {
+          apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+          'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify(toSync),
+      });
     }
   } catch (e) {
     console.log('[WC26 v2] fixture_locks sync error:', e.message);
