@@ -174,14 +174,28 @@ function mapFDMatch(m) {
     if (rawStatus === 'FINISHED')                 status = 'FT';
     if (status === 'SCH') return null;
 
-    const s1 = m.score?.fullTime?.home ?? m.score?.halfTime?.home ?? 0;
-    const s2 = m.score?.fullTime?.away ?? m.score?.halfTime?.away ?? 0;
+    // For FINISHED penalty-shootout matches the API can return the running penalty
+    // count in score.fullTime during the shootout phase.  Use regularTime (pure
+    // 90-min score) instead whenever penalties were taken; fall back to extraTime
+    // then fullTime.  For all other finished or live matches, use fullTime as usual.
+    const hasPenalties = m.score?.penalties?.home !== null && m.score?.penalties?.home !== undefined;
+    let s1, s2;
+    if (status === 'FT' && hasPenalties) {
+      s1 = m.score?.regularTime?.home ?? m.score?.extraTime?.home ?? m.score?.fullTime?.home ?? 0;
+      s2 = m.score?.regularTime?.away ?? m.score?.extraTime?.away ?? m.score?.fullTime?.away ?? 0;
+    } else {
+      s1 = m.score?.fullTime?.home ?? m.score?.halfTime?.home ?? 0;
+      s2 = m.score?.fullTime?.away ?? m.score?.halfTime?.away ?? 0;
+    }
+    const pk1 = m.score?.penalties?.home ?? null;
+    const pk2 = m.score?.penalties?.away ?? null;
+    const winner = m.score?.winner ?? null; // 'HOME_TEAM' | 'AWAY_TEAM' | 'DRAW'
     const minute = m.minute || null;
     const injuryTime = m.injuryTime || null; // stoppage time added, e.g. minute=90 injuryTime=4 → "90+4"
     const group = m.group?.replace('GROUP_', '') || null;
     const utcDate = m.utcDate || null; // authoritative kickoff time straight from the API
 
-    return { t1, t2, s1, s2, status, minute, injuryTime, group, utcDate };
+    return { t1, t2, s1, s2, pk1, pk2, winner, status, minute, injuryTime, group, utcDate };
   } catch (e) { return null; }
 }
 
